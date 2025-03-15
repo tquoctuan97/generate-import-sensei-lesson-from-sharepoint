@@ -102,12 +102,29 @@ async function fetchChildrenDriveItemList(accessToken, shareUrlBase64) {
 }
 
 function writeToCSV(data) {
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    console.warn("No data to write to CSV");
+    return;
+  }
+
+  // Escape CSV fields properly to handle commas, quotes, etc.
+  const escapeCSV = (field) => {
+    if (field === null || field === undefined) return '';
+    const stringField = String(field);
+    // If the field contains a comma, double quote, or newline, wrap it in double quotes
+    if (stringField.includes(',') || stringField.includes('"') || stringField.includes('\n')) {
+      // Replace double quotes with two double quotes (standard CSV)
+      return `"${stringField.replace(/"/g, '""')}"`;
+    }
+    return stringField;
+  };
+
   const headerData = Object.keys(data[0]).join(",") + "\n";
 
   // Convert the array of objects to a CSV string
   const rowData = data
     .map((item) => {
-      return Object.values(item).join(",");
+      return Object.values(item).map(escapeCSV).join(",");
     })
     .join("\n");
 
