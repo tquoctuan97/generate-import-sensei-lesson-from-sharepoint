@@ -12,29 +12,49 @@ const appSettings = {
 };
 
 async function main(shareLinkUrl) {
-  const accessToken = await fetchAccessToken();
+  try {
+    // Check input
+    if (!shareLinkUrl || typeof shareLinkUrl !== 'string' || !shareLinkUrl.trim()) {
+      throw new Error('Please provide a valid SharePoint URL');
+    }
+    
+    const accessToken = await fetchAccessToken();
+    const shareUrlBase64 = convertShareLinkToBase64(shareLinkUrl);
+    const childrenDriveItemList = await fetchChildrenDriveItemList(accessToken, shareUrlBase64);
+    
+    if (!childrenDriveItemList || childrenDriveItemList.length === 0) {
+      console.log("No items found in the shared folder");
+      return;
+    }
 
-  const shareUrlBase64 = convertShareLinkToBase64(shareLinkUrl);
+    console.log(`Found ${childrenDriveItemList.length} items in the shared folder`);
 
-  const childrenDriveItemList = await fetchChildrenDriveItemList(accessToken, shareUrlBase64);
+    const videoDriveItemList = childrenDriveItemList.filter((item) =>
+      item.file && item.file.mimeType && item.file.mimeType.includes("video/")
+    );
+    
+    console.log(`Found ${videoDriveItemList.length} video items`);
 
-  console.log(childrenDriveItemList);
+    if (videoDriveItemList.length === 0) {
+      console.log("No video files found");
+      return;
+    }
 
-  const videoDriveItemList = childrenDriveItemList.filter((item) =>
-    item.file.mimeType.includes("video/")
-  );
+    const dataToWrite = videoDriveItemList.map((item) => {
+      const title = item.name.replace(/\.mp4$/i, "");
+      return {
+        Lesson: title,
+        Description: getEmbedCode({ sharepointIds: item.sharepointIds, title }),
+        Status: "publish",
+        Prerequisite: "",
+      };
+    });
 
-  const dataToWrite = videoDriveItemList.map((item) => {
-    const title = item.name.replace(".mp4", "");
-    return {
-      Lesson: title,
-      Description: getEmbedCode({ sharepointIds: item.sharepointIds, title }),
-      Status: "publish",
-      Prerequisite: "",
-    };
-  });
-
-  writeToCSV(dataToWrite);
+    writeToCSV(dataToWrite);
+  } catch (error) {
+    console.error("An error occurred:", error.message);
+    process.exit(1);
+  }
 }
 
 async function fetchAccessToken() {
@@ -119,6 +139,6 @@ const rl = readline.createInterface({
 });
 
 rl.question("Input your sharepoint url: ", (shareLinkUrl) => {
-  main(shareLinkUrl);
+  main(shareLinkUrl.trim());
   rl.close();
 });
