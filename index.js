@@ -84,8 +84,53 @@ function convertShareLinkToBase64(shareLinkUrl) {
   return Buffer.from(shareLinkUrl).toString("base64");
 }
 
+async function fetchAllItemsRecursively(accessToken, items, shareUrlBase64) {
+  // Ensure items is an array
+  if (!Array.isArray(items)) {
+    console.warn('Received non-array items:', items);
+    return [];
+  }
+
+  let allItems = [...items];
+  
+  for (const item of items) {
+    if (item?.folder?.childCount > 0) {
+
+      const { siteId, listItemUniqueId: itemId } = item.sharepointIds;
+
+      const folderUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/items/${itemId}/children?%24select=sharepointids%2Cname%2Cfile%2Cfolder`;
+      const options = {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: undefined,
+      };
+
+      try {
+        const response = await fetch(folderUrl, options);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        
+        // Ensure data.value is an array before processing
+        if (!data.value || !Array.isArray(data.value)) {
+          console.warn(`Invalid response format for folder ${item.name}:`, data);
+          continue;
+        }
+        
+        const nestedItems = await fetchAllItemsRecursively(accessToken, data.value, shareUrlBase64);
+        allItems = [...allItems, ...nestedItems];
+      } catch (error) {
+        console.error(`Error fetching items from folder ${item.name}:`, error);
+      }
+    }
+  }
+
+  return allItems;
+}
+
 async function fetchChildrenDriveItemList(accessToken, shareUrlBase64) {
-  const url = `https://graph.microsoft.com/v1.0/shares/u!${shareUrlBase64}/driveItem/children?%24select=sharepointids%2Cname%2Cfile`;
+  const url = `https://graph.microsoft.com/v1.0/shares/u!${shareUrlBase64}/driveItem/children?%24select=sharepointids%2Cname%2Cfile%2Cfolder`;
 
   const options = {
     method: "GET",
@@ -95,10 +140,27 @@ async function fetchChildrenDriveItemList(accessToken, shareUrlBase64) {
 
   try {
     const response = await fetch(url, options);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     const data = await response.json();
-    return data.value;
+
+    let normalItem = [], folderItem = [];
+
+    data.value.forEach((item) => {
+      if(item?.folder?.childCount > 0) {
+        folderItem.push(item)
+      } else {
+        normalItem.push(item)
+      }
+    })
+
+    const itemInside = await fetchAllItemsRecursively(accessToken, folderItem, shareUrlBase64);
+    
+    return [...normalItem, ...itemInside];
   } catch (error) {
     console.error(error);
+    return [];
   }
 }
 
