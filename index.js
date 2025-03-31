@@ -1,6 +1,7 @@
 const fs = require("fs");
 const readline = require('readline');
 const dotenv = require('dotenv');
+const { exec } = require('child_process');
 
 // Load environment variables from .env file
 dotenv.config();
@@ -140,8 +141,22 @@ function writeToCSV(data) {
   const formattedDate = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}`;
   const filePath = `${outputDir}/data-${formattedDate}.csv`;
   fs.writeFileSync(filePath, csv);
-
   console.log(`CSV file written successfully to ${filePath}`);
+  
+  const platform = process.platform;
+  
+  const isWSL = process.platform === 'linux' && require('fs').existsSync('/proc/version') && 
+                require('fs').readFileSync('/proc/version', 'utf-8').toLowerCase().includes('microsoft');
+  
+  const openCommand = isWSL || platform === 'win32' ? 'explorer.exe' :
+                     platform === 'darwin' ? 'open' :
+                     'xdg-open';
+                     
+  exec(`${openCommand} ${outputDir}`, (error) => {
+    if (error) {
+      console.error('Cannot open output directory:', error);
+    }
+  });
 }
 
 function getEmbedCode({ title, sharepointIds }) {
